@@ -42,7 +42,7 @@ Real_Intensity_Matrix_Maker <- function(P, R_x, R_y){
   x_intensity <- Gaussian(P, R_x, x_values)
   y_intensity <- Gaussian(P, R_y, x_values)
   
-  I_0 <- max(x_intensity) + max(y_intensity)
+  I_0 <- sqrt(max(x_intensity)^2 + max(y_intensity)^2)
   I_xyz <- matrix(0, ncol = length(x_values), nrow = length(y_values))
  
   if(R_x > R_y){
@@ -108,8 +108,20 @@ Max_1_Intensity_Matrix_Maker <- function(P, R_x, R_y){
   return(Max_1_Matrix)
 }
 
+# This function creates a matrix that represents the radius of any given xy position.
+Radial_Matrix_Maker <- function(x, y, a, b){
+  Radii <- matrix(0, nrow = length(x), ncol = length(y))
+  for(i in 1:length(x)){
+    for(j in 1:length(y)){
+      Radii[j,i] <- sqrt((x[i]^2)/a^2 + (y[j]^2)/b^2)
+    }
+  }
+  return(Radii)
+}
+
 # This function plots a Gaussian beam profile of a 2D beam given the intensity matrix and the 1/e^2 beam diameter.
-Beam_Plotter <- function(Intensity_Matrix, R_x, R_y){
+Beam_Plotter <- function(P, R_x, R_y){
+  Intensity_Matrix <- Real_Intensity_Matrix_Maker(P, R_x, R_y)
   x_values <- seq(-R_x, R_x, by = R_x/50)
   y_values <- seq(-R_y, R_y, by = R_y/50)
   
@@ -151,6 +163,7 @@ Peak_Valley_Width_Interrogator <- function(P, R_x, R_y, x_dim, y_dim){
   return(Peak_Valley_Width_Ratio)
 }
 
+# This function shows the contained power of a given beam in a window.
 
 Contained_Power_Finder <- function(P, R_x, R_y, x_dim, y_dim){
   Real_Intensity_Matrix <- Real_Intensity_Matrix_Maker(P, R_x, R_y)
@@ -172,22 +185,32 @@ Contained_Power_Finder <- function(P, R_x, R_y, x_dim, y_dim){
     x_values <- append(x_values, max(x_values) + R_x/50, length(x_values))
   }
   
-  x_dim_index <- which(abs(x_values - round(.5 * x_dim))==min(abs(x_values - round(.5 * x_dim))))
-  y_dim_index <- which(abs(y_values - round(.5 * y_dim))==min(abs(y_values - round(.5 * y_dim))))
+  if(R_x > R_y){
+    Radii <- Radial_Matrix_Maker(x_values, x_values, (R_x/2), (R_y/2))
+  } else if(R_y <= R_x){
+    Radii <- Radial_Matrix_Maker(y_values, y_values, (R_x/2), (R_y/2))
+  }
+  Window_Area_Matrix <- (Radii <= 1) * 1
+  Contained_Intensity_Matrix <- Real_Intensity_Matrix * Window_Area_Matrix
+  contained_power_fraction <- sum(Contained_Intensity_Matrix)/sum(Real_Intensity_Matrix)
   
-  max_index <- which(Real_Intensity_Matrix == max(Real_Intensity_Matrix), arr.ind = TRUE)[1]
+  # Square boxes
+  # x_dim_index <- which(abs(x_values - round(.5 * x_dim))==min(abs(x_values - round(.5 * x_dim))))
+  # y_dim_index <- which(abs(y_values - round(.5 * y_dim))==min(abs(y_values - round(.5 * y_dim))))
+  # 
+  # max_index <- which(Real_Intensity_Matrix == max(Real_Intensity_Matrix), arr.ind = TRUE)[1]
+  # 
+  # x_dim_range <- abs(x_dim_index - max_index)
+  # y_dim_range <- abs(y_dim_index - max_index)
+  # 
+  # contained_power_fraction <- sum(Real_Intensity_Matrix[(max_index - x_dim_range):(max_index + x_dim_range),
+  #                                         (max_index - y_dim_range):(max_index + y_dim_range)])/sum(Real_Intensity_Matrix)
   
-  x_dim_range <- abs(x_dim_index - max_index)
-  y_dim_range <- abs(y_dim_index - max_index)
-  
-  contained_power_fraction <- sum(Real_Intensity_Matrix[(max_index - x_dim_range):(max_index + x_dim_range),
-                                          (max_index - y_dim_range):(max_index + y_dim_range)])/sum(Real_Intensity_Matrix)
-  
-  contained_power_value <- contained_power_fraction * sum(Real_Intensity_Matrix)
-  contained_s_power_density <- contained_power_value/(x_dim * 10^-4 * y_dim * 10^-4)
+  contained_power_value <- contained_power_fraction * P
+  contained_s_power_density <- contained_power_value/((.5 * x_dim * 10^-4) * (.5 * y_dim * 10^-4) * pi) * 2
   print(paste('The fraction of total power contained in the window is', contained_power_fraction, sep = ' '))
   print(paste('The total power contained in the window is', contained_power_value, 'Watts', sep = ' '))
-  print(paste('The surface power density in the window at the focus is', contained_s_power_density, 'W/cm^2', 
+  print(paste('The max surface power density in the window at the focus is', contained_s_power_density, 'W/cm^2',
               sep = ' '))
   return(contained_power_fraction)
 }
@@ -256,8 +279,8 @@ Propagation_Intensity_Plotter <- function(P, wavelength, R_x, R_y, z, window){
 
 # This function integrates the beam plotter, the peak to valley finder, the coefficient of 
 # variation finder, the contained power finder, and the propagation intensity plotter. Inputs 
-# are power, e^-2 beam dimensions, and the interrogation window dimensions, wavelength, and z distance from
-# center to edge of flow cell.
+# are power(Watts), e^-2 beam dimensions(microns), the interrogation window dimensions(microns),
+# wavelength(microns), and z distance from center to edge of flow cell(microns).
 Integrated_Function <- function(P, wavelength, R_x, R_y, x_dim, y_dim, z){
   Real_Matrix <- Real_Intensity_Matrix_Maker(P, R_x, R_y)
   window <- sqrt(x_dim * y_dim)
